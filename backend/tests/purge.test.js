@@ -46,6 +46,7 @@ describe('hard delete', () => {
     expect((await S.admin.delete(`/bills/${S.bill.id}/permanent`).send({ confirm: 'DELETE' })).status).toBe(200);
     expect((await db.query('select count(*)::int n from vendor_bills')).rows[0].n).toBe(0);
     expect(fs.existsSync(path.resolve(config.uploadDir, files[0].relative_path))).toBe(false);
+    expect((await db.query('select count(*)::int n from file_deletion_jobs')).rows[0].n).toBe(0);
     expect((await S.admin.delete(`/bills/${S.bill.id}/permanent`).send({ confirm: 'DELETE' })).status).toBe(404);
   });
 
@@ -63,6 +64,7 @@ describe('hard delete', () => {
       expect((await db.query(`select count(*)::int n from ${t}`)).rows[0].n, t).toBe(0);
     }
     for (const p of paths) expect(fs.existsSync(path.resolve(config.uploadDir, p.relative_path))).toBe(false);
+    expect((await db.query('select count(*)::int n from file_deletion_jobs')).rows[0].n).toBe(0);
     const audit = (await db.query("select previous_data from audit_logs where action_type = 'PROJECT_HARD_DELETED'")).rows;
     expect(audit).toHaveLength(1);
     expect(audit[0].previous_data).toMatchObject({ name: 'Doomed', payments: 1, bills: 0 });

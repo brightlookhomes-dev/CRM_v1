@@ -1,0 +1,48 @@
+services:
+  - type: web
+    name: brightlook-api
+    runtime: node
+    region: singapore
+    plan: 0.5c-512mb
+    rootDir: backend
+    buildCommand: npm ci
+    preDeployCommand: npm run migrate
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    initialDeployHook: npm run seed
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: brightlook-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+      - key: CORS_ORIGIN
+        value: https://app.brightlookhomes.in
+      - key: COOKIE_SAME_SITE
+        value: lax
+      - key: STORAGE_PROVIDER
+        value: r2
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: MAX_UPLOAD_MB
+        value: "10"
+
+databases:
+  - name: brightlook-db
+    databaseName: brightlook
+    user: brightlook_app
+    region: singapore
+    plan: 0.1c-256mb
+    postgresMajorVersion: "18"
+    ipAllowList: []

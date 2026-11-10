@@ -16,6 +16,11 @@ Demo logins (local only): `admin / app@123` (override with `SEED_ADMIN_PASSWORD`
 
 **Database:** with `DATABASE_URL` empty the API uses an embedded Postgres (PGlite, stored in `backend/data`). Set `DATABASE_URL=postgres://user:pass@host:5432/db` to use a real PostgreSQL server; migrations run automatically on start (`npm run migrate` to run them alone).
 
+## Deployment
+
+For Cloudflare Pages, an Oracle Cloud VM with PostgreSQL and PM2, and private Cloudflare R2 media storage, see [docs/deployment.md](docs/deployment.md).
+For a Render web service and managed PostgreSQL deployment, see [docs/render-deployment.md](docs/render-deployment.md) and review [render.yaml](render.yaml) before applying it.
+
 ## Tests
 
 ```bash
@@ -29,7 +34,7 @@ cd frontend && npm test    # 10 component/unit tests
 - Authorization is enforced server-side: role middleware + `requireProjectAccess` (assignment check) on every project-scoped resource.
 - Auth: bcrypt, JWT access token + rotating refresh token in HttpOnly SameSite cookies, replay detection, lockout, CSRF header guard, rate limits, Helmet.
 - Audit rows are written inside the same DB transaction as the business change; a trigger makes `audit_logs` append-only.
-- Files: stored via a `LocalStorageAdapter` (swap for S3/Azure), content sniffed by magic bytes, served only through `GET /api/v1/files/:id` with per-project access checks.
+- Files: stored locally or in a private Cloudflare R2 bucket, content-sniffed by magic bytes, and served through `GET /api/v1/files/:id` with per-project access checks.
 - Money is `NUMERIC`; customer payments are an append-only ledger (reversals/refunds are negative rows), kept separate from vendor bills.
 - Project progress is an explicitly managed percentage (set by PM progress updates or Admin); payment progress = net verified receipts ÷ contract amount.
 

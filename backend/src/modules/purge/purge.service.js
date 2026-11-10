@@ -1,14 +1,10 @@
 import { withTx } from '../../config/database.js';
 import { AppError, notFound } from '../../utils/errors.js';
 import { recordAudit } from '../../services/auditLog.service.js';
-import { storage } from '../../services/fileStorage.service.js';
+import { enqueueFileDeletions, processFileDeletions } from '../../services/fileDeletion.service.js';
 
 // Permanent (hard) deletes. Admin-only; callers must send confirm:"DELETE".
 // The audit trail is kept (audit_logs has no foreign keys) and records what was destroyed.
-
-async function removeFiles(paths) {
-  for (const p of paths) await storage.remove(p).catch(() => {});
-}
 
 export async function purgeProject(ctx, id) {
   let paths = [];
@@ -22,7 +18,8 @@ export async function purgeProject(ctx, id) {
       (select count(*)::int from vendor_bills where project_id = $1) as bills,
       (select count(*)::int from customer_payments where project_id = $1) as payments,
       (select coalesce(sum(amount), 0) from customer_payments where project_id = $1) as net_received`)).rows[0];
-    paths = (await q('select relative_path from files where project_id = $1')).rows.map((r) => r.relative_path);
+    paths = (await q('select storage_provider, relative_path from files where project_id = $1')).rows;
+    await enqueueFileDeletions(tx, paths);
 
     await q('delete from project_update_files where update_id in (select id from project_updates where project_id = $1)');
     await q('delete from project_updates where project_id = $1');
@@ -50,7 +47,7 @@ export async function purgeProject(ctx, id) {
       previous: { name: project.name, code: project.project_code, status: project.status, contractAmount: project.contract_amount, ...counts },
       description: `Project ${project.name} permanently deleted` });
   });
-  await removeFiles(paths);
+  return processFileDeletions();
 }
 
 export async function purgeBill(ctx, id) {
@@ -59,9 +56,10 @@ export async function purgeBill(ctx, id) {
     const bill = (await tx.query('select * from vendor_bills where id = $1 for update', [id])).rows[0];
     if (!bill) throw notFound('Bill');
     const files = (await tx.query(
-      `select f.id, f.relative_path from files f where f.id in (select file_id from vendor_bill_versions where bill_id = $1
+      `select f.id, f.storage_provider, f.relative_path from files f where f.id in (select file_id from vendor_bill_versions where bill_id = $1
          union select file_id from vendor_bill_attachments where bill_id = $1)`, [id])).rows;
-    paths = files.map((f) => f.relative_path);
+    paths = files.map(({ storage_provider, relative_path }) => ({ storage_provider, relative_path }));
+    await enqueueFileDeletions(tx, paths);
     await tx.query("delete from approval_actions where approval_id in (select id from approval_requests where entity_type = 'vendor_bill' and entity_id = $1)", [id]);
     await tx.query("delete from approval_requests where entity_type = 'vendor_bill' and entity_id = $1", [id]);
     for (const t of ['vendor_bill_reviews', 'vendor_bill_attachments', 'vendor_bill_versions']) await tx.query(`delete from ${t} where bill_id = $1`, [id]);
@@ -72,7 +70,7 @@ export async function purgeBill(ctx, id) {
       previous: { invoiceNumber: bill.invoice_number, vendor: bill.vendor_name, amount: bill.amount, status: bill.status, versions: bill.current_version },
       description: `Bill ${bill.invoice_number} permanently deleted` });
   });
-  await removeFiles(paths);
+  return processFileDeletions();
 }
 
 export async function purgeUpdate(ctx, id) {
@@ -80,8 +78,9 @@ export async function purgeUpdate(ctx, id) {
   await withTx(async (tx) => {
     const u = (await tx.query('select * from project_updates where id = $1 for update', [id])).rows[0];
     if (!u) throw notFound('Update');
-    const files = (await tx.query('select f.id, f.relative_path from project_update_files x join files f on f.id = x.file_id where x.update_id = $1', [id])).rows;
-    paths = files.map((f) => f.relative_path);
+    const files = (await tx.query('select f.id, f.storage_provider, f.relative_path from project_update_files x join files f on f.id = x.file_id where x.update_id = $1', [id])).rows;
+    paths = files.map(({ storage_provider, relative_path }) => ({ storage_provider, relative_path }));
+    await enqueueFileDeletions(tx, paths);
     await tx.query('delete from project_update_files where update_id = $1', [id]);
     await tx.query('delete from project_updates where id = $1', [id]);
     if (files.length) await tx.query('delete from files where id = any($1::uuid[])', [files.map((f) => f.id)]);
@@ -90,7 +89,7 @@ export async function purgeUpdate(ctx, id) {
       previous: { type: u.update_type, title: u.title, description: u.description, progress: u.progress_percentage },
       description: 'Project update permanently deleted (project progress value is unchanged)' });
   });
-  await removeFiles(paths);
+  return processFileDeletions();
 }
 
 export async function purgeUser(ctx, id) {

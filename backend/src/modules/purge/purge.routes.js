@@ -9,7 +9,11 @@ import * as svc from './purge.service.js';
 // Hard deletes require an explicit confirm:"DELETE" so a stray request can never destroy data.
 const confirmBody = z.object({ confirm: z.literal('DELETE', { errorMap: () => ({ message: 'Send confirm: "DELETE" to permanently delete' }) }) });
 const route = (path, fn, message) => [path, authenticate, authorize('ADMIN'), validate({ params: idParam, body: confirmBody }),
-  asyncHandler(async (req, res) => { await fn(req.ctx, req.valid.params.id); send(res, message); })];
+  asyncHandler(async (req, res) => {
+    const cleanup = await fn(req.ctx, req.valid.params.id);
+    const meta = cleanup?.failed ? { mediaCleanupPending: cleanup.failed } : undefined;
+    send(res, cleanup?.failed ? `${message}; media cleanup is queued for retry` : message, null, meta);
+  })];
 
 const router = Router();
 router.delete(...route('/projects/:id/permanent', svc.purgeProject, 'Project permanently deleted'));

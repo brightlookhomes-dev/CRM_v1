@@ -25,12 +25,13 @@ router.get('/:id', validate({ params: idParam }), asyncHandler(async (req, res) 
   const file = (await db.query('select * from files where id = $1', [req.valid.params.id])).rows[0];
   if (!file) throw notFound('File');
   if (!(await canAccess(req.user, file))) throw forbidden('You do not have access to this file');
+  const body = await storage.stream(file.storage_provider, file.relative_path);
   res.setHeader('Content-Type', file.mime_type);
   res.setHeader('Content-Length', String(file.file_size));
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Cache-Control', 'private, max-age=300');
   const safeName = encodeURIComponent(file.original_name);
   res.setHeader('Content-Disposition', `${req.query.download ? 'attachment' : 'inline'}; filename*=UTF-8''${safeName}`);
-  storage.stream(file.relative_path).on('error', () => res.destroy()).pipe(res);
+  body.on('error', () => res.destroy()).pipe(res);
 }));
 export default router;
