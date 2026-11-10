@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "api", "runtimeExecutable": "node", "runtimeArgs": ["../backend/src/server.js"], "port": 4000, "url": "http://localhost:4000" },
+    { "name": "web", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 5173 }
+  ]
+}

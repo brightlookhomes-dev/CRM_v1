@@ -1,0 +1,1 @@
+export const BILL_CATEGORIES = ['Cement', 'Bricks', 'Steel', 'Sand', 'Aggregates', 'Tiles & Flooring', 'Electrical', 'Plumbing', 'Paint', 'Carpentry', 'Labour', 'Machinery & Equipment', 'Transport', 'Other'];
